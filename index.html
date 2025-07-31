@@ -1,0 +1,149 @@
+<!-- Icône du chat -->
+<div id="chat-icon" style="
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    font-size: 24px;
+">
+    💬
+</div>
+
+<!-- Fenêtre du chat -->
+<div id="chat-box" style="
+    display: none;
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    width: 350px;
+    height: 500px;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    z-index: 9999;
+    flex-direction: column;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    overflow: hidden;
+    display: none;
+">
+    <div style="
+        background: #007bff;
+        color: white;
+        padding: 15px;
+        font-weight: bold;
+        text-align: center;
+    ">AWA — Chatbot FORCE-N</div>
+
+    <div id="chat-messages" style="
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+        background: #f7f9fb;
+        font-size: 14px;
+    "></div>
+
+    <div style="display: flex; border-top: 1px solid #ccc;">
+        <input id="chat-input" type="text" placeholder="Pose ta question..." style="
+            flex: 1;
+            padding: 10px;
+            border: none;
+            outline: none;
+            font-size: 14px;
+        ">
+        <button onclick="sendMessage()" style="
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        ">➤</button>
+    </div>
+</div>
+
+<script>
+    const chatIcon = document.getElementById("chat-icon");
+    const chatBox = document.getElementById("chat-box");
+    const chatMessages = document.getElementById("chat-messages");
+    let firstOpen = true;
+
+    chatIcon.onclick = () => {
+        if (chatBox.style.display === "none") {
+            chatBox.style.display = "flex";
+            if (firstOpen) {
+                setTimeout(() => {
+                    appendBotMessage("Bonjour 👋, je suis <strong>AWA</strong>, le bot du programme <strong>FORCE-N</strong>. Pose-moi une question sur nos formations, services ou opportunités !");
+                }, 300);
+                firstOpen = false;
+            }
+        } else {
+            chatBox.style.display = "none";
+        }
+    };
+
+    function appendUserMessage(text) {
+        const msg = document.createElement("div");
+        msg.innerHTML = `<div style="text-align: right; margin: 5px 0;"><span style="background-color: #007bff; color: white; padding: 8px 12px; border-radius: 15px 15px 0 15px; display: inline-block; max-width: 80%;">${text}</span></div>`;
+        chatMessages.appendChild(msg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function appendBotMessage(text) {
+        const msg = document.createElement("div");
+        msg.innerHTML = `<div style="text-align: left; margin: 5px 0;"><span style="background-color: #e5e5ea; color: black; padding: 8px 12px; border-radius: 15px 15px 15px 0; display: inline-block; max-width: 80%;">${text}</span></div>`;
+        chatMessages.appendChild(msg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function showTyping() {
+        const typing = document.createElement("div");
+        typing.id = "typing";
+        typing.innerHTML = `<div style="text-align: left; margin: 5px 0;"><span style="background-color: #e5e5ea; padding: 8px 12px; border-radius: 15px 15px 15px 0; display: inline-block;"><em>AWA est en train de répondre...</em></span></div>`;
+        chatMessages.appendChild(typing);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function removeTyping() {
+        const typing = document.getElementById("typing");
+        if (typing) typing.remove();
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById("chat-input");
+        const message = input.value.trim();
+        if (!message) return;
+
+        appendUserMessage(message);
+        input.value = "";
+
+        showTyping();
+
+        try {
+            const response = await fetch("http://localhost:5000/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message })
+            });
+
+            const data = await response.json();
+            removeTyping();
+            appendBotMessage(data.response);
+        } catch (err) {
+            removeTyping();
+            appendBotMessage(" Une erreur est survenue. Veuillez réessayer.");
+        }
+    }
+
+    document.getElementById("chat-input").addEventListener("keypress", function (e) {
+        if (e.key === "Enter") sendMessage();
+    });
+</script>
