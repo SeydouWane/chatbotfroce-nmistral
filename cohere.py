@@ -5,6 +5,7 @@ from flask_cors import CORS
 from bs4 import BeautifulSoup
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
+import traceback
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -20,10 +21,10 @@ client = InferenceClient(token=HF_TOKEN)
 app = Flask(__name__)
 CORS(app)
 
-# Formulaire d'inscription
+# URL du formulaire d'inscription
 INSCRIPTION_URL = "https://forcen.jotform.com/form/231154488427359"
 
-# URLS À SCRAPER
+# PAGES À SCRAPER
 URLS = [
     "https://preprod2.force-n.sn/a-propos",
     "https://preprod2.force-n.sn/les-composantes",
@@ -67,10 +68,9 @@ URLS = [
     "https://preprod2.force-n.sn/certificat/web-3",
 ]
 
-# Cache mémoire simple
+# Cache mémoire
 force_content_cache = None
 
-# SCRAPING + CACHING
 def get_text_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -79,13 +79,13 @@ def get_text_from_url(url):
             tag.decompose()
         return soup.get_text(separator=' ', strip=True)
     except Exception as e:
-        print(f"[Erreur] {url} — {e}")
+        print(f"[Erreur scraping] {url} — {e}")
         return ""
 
 def get_force_content():
     global force_content_cache
     if force_content_cache:
-        print("✅ Chargement depuis le cache mémoire.")
+        print("✅ Chargement depuis cache mémoire.")
         return force_content_cache
 
     print("🔄 Scraping des pages FORCE-N...")
@@ -93,22 +93,12 @@ def get_force_content():
     full_text = "\n\n".join(all_texts)[:10000]
 
     force_content_cache = full_text
-    print("✅ Contenu stocké en cache mémoire.")
+    print("✅ Contenu stocké en mémoire.")
     return full_text
 
 full_text = get_force_content()
 
-# CHATBOT LOGIC
 def ask_force_n_bot(message, context_text):
-    system_prompt = (
-        "Tu es AWA, la voix officielle du programme FORCE-N. "
-        "Sois institutionnelle, claire, sans inventer."
-        "Réponds uniquement à partir des informations suivantes :\n\n"
-        f"{context_text}\n\n"
-        "Si l’information n’est pas présente, dis : "
-        "'Je suis désolée, je n’ai pas cette information.'"
-    )
-
     if "inscription" in message.lower() or "s'inscrire" in message.lower():
         return (
             "Pour t'inscrire aux formations de FORCE-N, merci de remplir ce formulaire officiel :\n"
@@ -116,34 +106,53 @@ def ask_force_n_bot(message, context_text):
             "Tu y trouveras toutes les informations nécessaires à ta pré-candidature."
         )
 
-    completion = client.chat_completion(
-        model="mistralai/Mixtral-8x7B-Instruct-v0.1",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
-        ],
-        max_tokens=400,
-        temperature=0.7
+    system_prompt = (
+        "Tu es AWA, la voix officielle du programme FORCE-N. "
+        "Sois institutionnelle, claire, sans inventer.\n\n"
+        "Réponds uniquement à partir des informations suivantes :\n"
+        f"{context_text}\n\n"
+        "Si l’information n’est pas présente, dis : "
+        "'Je suis désolée, je n’ai pas cette information.'"
     )
-    return completion.choices[0].message["content"]
 
-# ROUTES FLASK
+    try:
+        completion = client.chat_completion(
+            model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            max_tokens=400,
+            temperature=0.7
+        )
+        return completion.choices[0].message["content"]
+    except Exception as e:
+        print("❌ Erreur HuggingFace:", e)
+        traceback.print_exc()
+        return "Une erreur est survenue. Veuillez réessayer."
+
+# ROUTES
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.json
-    user_message = data.get("message")
-    if not user_message:
-        return jsonify({"error": "Message manquant"}), 400
+    try:
+        data = request.json
+        user_message = data.get("message")
+        if not user_message:
+            return jsonify({"error": "Message manquant"}), 400
 
-    bot_response = ask_force_n_bot(user_message, full_text)
-    return jsonify({"response": bot_response})
+        bot_response = ask_force_n_bot(user_message, full_text)
+        return jsonify({"response": bot_response})
+    except Exception as e:
+        print("❌ Erreur serveur:", e)
+        traceback.print_exc()
+        return jsonify({"response": "Erreur interne du serveur."}), 500
 
 @app.route("/")
 def home():
     return send_file("index.html")
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
 # Pour Render
 application = app
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
