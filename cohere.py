@@ -147,6 +147,3 @@ if __name__ == "__main__":
 
 # Pour Render
 application = app
-
-# Pour Render
-application = app
