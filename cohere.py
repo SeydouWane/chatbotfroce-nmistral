@@ -143,7 +143,10 @@ def home():
     return send_file("index.html")
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+# Pour Render
+application = app
 
 # Pour Render
 application = app
