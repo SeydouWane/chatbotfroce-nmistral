@@ -1,5 +1,4 @@
 import os
-import redis
 import requests
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -11,12 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # CONFIGURATION
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
-REDIS_KEY = "force_content"
-EXPIRATION_SECONDS = 90 * 24 * 60 * 60  # 90 jours
-
 HF_TOKEN = os.getenv("HF_TOKEN")
 if not HF_TOKEN:
     raise ValueError("⚠️ La variable d’environnement HF_TOKEN n’est pas définie.")
@@ -27,10 +20,9 @@ client = InferenceClient(token=HF_TOKEN)
 app = Flask(__name__)
 CORS(app)
 
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-
 # Formulaire d'inscription
 INSCRIPTION_URL = "https://forcen.jotform.com/form/231154488427359"
+
 # URLS À SCRAPER
 URLS = [
     "https://preprod2.force-n.sn/a-propos",
@@ -75,6 +67,9 @@ URLS = [
     "https://preprod2.force-n.sn/certificat/web-3",
 ]
 
+# Cache mémoire simple
+force_content_cache = None
+
 # SCRAPING + CACHING
 def get_text_from_url(url):
     try:
@@ -88,35 +83,32 @@ def get_text_from_url(url):
         return ""
 
 def get_force_content():
-    if redis_client.exists(REDIS_KEY):
-        print("✅ Chargement du contenu FORCEN depuis Redis.")
-        return redis_client.get(REDIS_KEY).decode("utf-8")
+    global force_content_cache
+    if force_content_cache:
+        print("✅ Chargement depuis le cache mémoire.")
+        return force_content_cache
 
-    print("🔄 Scraping du site FORCEN...")
+    print("🔄 Scraping des pages FORCE-N...")
     all_texts = [get_text_from_url(url) for url in URLS]
     full_text = "\n\n".join(all_texts)[:10000]
 
-    redis_client.setex(REDIS_KEY, EXPIRATION_SECONDS, full_text)
-    print("✅ Contenu sauvegardé dans Redis.")
+    force_content_cache = full_text
+    print("✅ Contenu stocké en cache mémoire.")
     return full_text
 
 full_text = get_force_content()
 
 # CHATBOT LOGIC
-
-
-# ... fonction ask_force_n_bot mise à jour :
 def ask_force_n_bot(message, context_text):
     system_prompt = (
         "Tu es AWA, la voix officielle du programme FORCE-N. "
+        "Sois institutionnelle, claire, sans inventer."
         "Réponds uniquement à partir des informations suivantes :\n\n"
         f"{context_text}\n\n"
         "Si l’information n’est pas présente, dis : "
-        "'Je suis désolée, je n’ai pas cette information sur le site de FORCE-N.' "
-        "Sois institutionnelle, claire, sans inventer."
+        "'Je suis désolée, je n’ai pas cette information.'"
     )
 
-    # 👉 Cas spécial : inscription
     if "inscription" in message.lower() or "s'inscrire" in message.lower():
         return (
             "Pour t'inscrire aux formations de FORCE-N, merci de remplir ce formulaire officiel :\n"
@@ -135,7 +127,6 @@ def ask_force_n_bot(message, context_text):
     )
     return completion.choices[0].message["content"]
 
-
 # ROUTES FLASK
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -153,3 +144,6 @@ def home():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+# Pour Render
+application = app
